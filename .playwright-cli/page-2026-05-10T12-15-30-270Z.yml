@@ -1,0 +1,18 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - navigation "Primary navigation" [ref=e6]:
+      - link "Checker" [ref=e7] [cursor=pointer]:
+        - /url: /
+        - img [ref=e8]
+        - text: Checker
+      - link "Player" [ref=e12] [cursor=pointer]:
+        - /url: /player
+        - img [ref=e13]
+        - text: Player
+    - button "Switch language to AR" [ref=e19] [cursor=pointer]:
+      - generic [ref=e20]: EN
+      - generic [ref=e21]: /
+      - generic [ref=e22]: AR
+  - main [ref=e23]:
+    - generic [ref=e24]: Loading module
+  - contentinfo [ref=e25]: This app is a frontend layer around the remote iptvchecker.site checker flow. No database. No auth. Just cleanup, proxying, and results.

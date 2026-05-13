@@ -1,0 +1,19 @@
+{
+  "name": "CHECKER IPTV Pro Player",
+  "short_name": "IPTV Pro",
+  "description": "A high stability IPTV player for live M3U, MPEG-TS, HLS, and DASH streams.",
+  "start_url": "/player",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#02040a",
+  "theme_color": "#050816",
+  "icons": [
+    {
+      "src": "/pwa-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

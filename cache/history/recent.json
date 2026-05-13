@@ -1,0 +1,236 @@
+[
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778681145859",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778681145859-2",
+    "name": "Bein Sports LOW-2",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80489",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-13T14:06:04.417Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778681145859",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778681145859-1",
+    "name": "Bein Sports LOW-1",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80488",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-13T14:06:01.492Z"
+  },
+  {
+    "playlistId": "wk5-v2030uks-top-http-wk5-v2030uks-top-get-php-username-6735396949-password-9613",
+    "channelId": "wk5-v2030uks-top-http-wk5-v2030uks-top-get-php-username-6735396949-password-9613-1",
+    "name": "ماهر المعيقلي ( سورة الفاتحة )",
+    "url": "http://wk5.v2030uks.top:80/series/6735396949/9613382385/821849.mkv",
+    "logo": "https://i.postimg.cc/76sYMP9L/ezgif-3ab48b4198057fa2.jpg",
+    "group": "الشيخ ماهر المعيقلي",
+    "playedAt": "2026-05-10T16:12:15.827Z"
+  },
+  {
+    "playlistId": "tv-channels-bc-7e-8b-00-06-ba-plus-tv-channels-bc-7e-8b-00-06-ba-plus-m3u-177842",
+    "channelId": "tv-channels-bc-7e-8b-00-06-ba-plus-tv-channels-bc-7e-8b-00-06-ba-plus-m3u-177842-49",
+    "name": "AR|Al KASS 6HD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/164857",
+    "logo": "http://kinglogo.newtvhd.com/logoo/ALKASS4K/Al-Kass-6.png",
+    "group": "AR| Al KASS SPORTS",
+    "playedAt": "2026-05-10T15:53:46.302Z"
+  },
+  {
+    "playlistId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab",
+    "channelId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab-50",
+    "name": "AR| ABU DHABI ASIA 1HD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/151864",
+    "logo": "http://kinglogo.newtvhd.com/logoo/SSC/ABU%20DHABI%20%20ASIA%201%20HD.png",
+    "group": "AD| ABU DHABI SERIE A (STARZPLAY)",
+    "playedAt": "2026-05-10T15:53:24.175Z"
+  },
+  {
+    "playlistId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab",
+    "channelId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab-37",
+    "name": "beIN SPORTS 1 SD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/125319",
+    "logo": "http://kinglogo.newtvhd.com/logoo/BEIN4K/SD/bein%20sports%201%20SD.png",
+    "group": "AR| BEIN SPORTS SD",
+    "playedAt": "2026-05-10T15:52:35.770Z"
+  },
+  {
+    "playlistId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab",
+    "channelId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab-12",
+    "name": "beIN SPORTS 3HD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/7749",
+    "logo": "http://kinglogo.newtvhd.com/logoo/BEIN4K/HD/bein%20sports%20premium%203%20HD.png",
+    "group": "AR| BEIN SPORTS HD",
+    "playedAt": "2026-05-10T15:52:18.427Z"
+  },
+  {
+    "playlistId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab",
+    "channelId": "vivapro-ddno-us-http-vivapro-ddno-us-get-php-username-bc-3a7e-3a8b-3a00-3a06-3ab-1",
+    "name": "AR| beIN SPORTS HD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/239672",
+    "logo": "https://www.cafonline.com/media/sa4cpure/afcon2025_logo_land_color-v1.png",
+    "group": "AR| BEIN SPORTS HD&SD",
+    "playedAt": "2026-05-10T15:52:02.329Z"
+  },
+  {
+    "playlistId": "tv-channels-bc-7e-8b-00-06-ba-plus-tv-channels-bc-7e-8b-00-06-ba-plus-m3u-177842",
+    "channelId": "tv-channels-bc-7e-8b-00-06-ba-plus-tv-channels-bc-7e-8b-00-06-ba-plus-m3u-177842-1",
+    "name": "AR| beIN SPORTS HD",
+    "url": "http://vivapro.ddno.us:8080/bc:7e:8b:00:06:ba/sLON3lSFgLqcE8j/239672",
+    "logo": "https://www.cafonline.com/media/sa4cpure/afcon2025_logo_land_color-v1.png",
+    "group": "AR| BEIN SPORTS HD&SD",
+    "playedAt": "2026-05-10T15:51:58.848Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-2745",
+    "name": "HEVC:BEIN_SPORTS1(1080i)",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/47645",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:46:27.764Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-2735",
+    "name": "AR:BEIN_SPORTS1_HD",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/47628",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:46:10.820Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-26",
+    "name": "Bein Sports HD-1",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80517",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:11:07.986Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-39",
+    "name": "Bein Sports FHD-1",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80533",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:09:21.634Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-28",
+    "name": "Bein Sports HD-3",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80519",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:09:13.037Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-27",
+    "name": "Bein Sports HD-2",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80518",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:08:59.088Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-14",
+    "name": "Bein Sports SD1",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80502",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:07:46.860Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-2",
+    "name": "Bein Sports LOW-1",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80488",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T15:04:45.547Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-15",
+    "name": "Bein Sports SD-2",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80503",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T14:08:02.207Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-3",
+    "name": "Bein Sports LOW-2",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80489",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T14:06:06.678Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-25",
+    "name": "Bein Sport French SD2",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80513",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T14:05:14.050Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-7",
+    "name": "Bein Sports LOW-6",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80493",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T13:46:46.628Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-1",
+    "name": "get.php?username=9UmuTAbi232323&password=zz8HwkjQx6&type=m3u_plus",
+    "url": "http://9UmuTAbi232323.sackksa2.xyz:80/get.php?username=9UmuTAbi232323&password=zz8HwkjQx6&type=m3u_plus",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T11:23:20.643Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-4",
+    "name": "Bein Sports LOW-3",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80490",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T11:23:07.616Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-5",
+    "name": "Bein Sports LOW-4",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80491",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T10:00:45.389Z"
+  },
+  {
+    "playlistId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127",
+    "channelId": "ar-iptv2027-01-03-ar-iptv2027-01-03-m3u-1778376601127-6",
+    "name": "Bein Sports LOW-5",
+    "url": "http://ghost1.tv:80/01095391353/35319359010MM/80492",
+    "logo": null,
+    "group": "Ungrouped",
+    "playedAt": "2026-05-10T10:00:44.809Z"
+  },
+  {
+    "playlistId": "direct-stream-http-pro-123sat-net-2082-get-php-username-110039187984462-password",
+    "channelId": "direct-stream-http-pro-123sat-net-2082-get-php-username-110039187984462-password-1",
+    "name": "Direct Stream",
+    "url": "http://pro.123sat.net:2082/get.php?username=110039187984462&password=31314181&type=m3u_plus&output=ts",
+    "logo": null,
+    "group": "Direct Streams",
+    "playedAt": "2026-05-10T01:28:04.325Z"
+  }
+]

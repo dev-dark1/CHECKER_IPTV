@@ -1,0 +1,38 @@
+[     642ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:5181/node_modules/.vite/deps/chunk-PJEEZAML.js?v=61f9059c:21550
+[    3218ms] [LOG] [player:probe] {playbackUrl: http://localhost:5181/proxy?url=http%3A%2F%2Fghost1.tv%3A80%2F01095391353%2F35319359010MM%2F80488, probeUrl: http://localhost:5181/proxy/probe?url=http%3A%2F%2…st1.tv%3A80%2F01095391353%2F35319359010MM%2F80488, ok: true, status: 200, contentType: video/mp2t} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    3219ms] [LOG] [player:engine] {engine: mpegts, playbackUrl: http://localhost:5181/proxy?url=http%3A%2F%2Fghost1.tv%3A80%2F01095391353%2F35319359010MM%2F80488, providerUrl: http://ghost1.tv:80/01095391353/35319359010MM/80488, contentType: video/mp2t, attempt: 0} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    3418ms] [LOG] [player:state] {state: waiting} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    3429ms] [LOG] [player:state] {state: loadstart} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    3459ms] [LOG] [MSEController] > MediaSource onSourceOpen @ http://localhost:5181/node_modules/.vite/deps/mpegts__js.js?v=61f9059c:63
+[    3712ms] [LOG] [player:preload-next] {playbackUrl: http://localhost:5181/proxy?url=http%3A%2F%2Fghost1.tv%3A80%2F01095391353%2F35319359010MM%2F80489} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    4226ms] [LOG] [player:stats] {status: loading, engine: MPEGTS, bufferSeconds: 0, liveLatency: 0, bitrateKbps: null} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    4878ms] [LOG] [TSDemuxer] > Parsed first PAT: {"program_pmt_pid":{"1":4096},"version_number":0} @ blob:http://localhost:5181/1be49263-f81a-4376-981a-b04f15209a87:3042
+[    4881ms] [LOG] [TSDemuxer] > Parsed first PMT: {"pid_stream_type":{"256":27,"257":15},"common_pids":{"h264":256,"adts_aac":257},"pes_private_data_pids":{},"timed_id3_pids":{},"scte_35_pids":{},"smpte2038_pids":{},"program_number":1,"version_number":0} @ blob:http://localhost:5181/1be49263-f81a-4376-981a-b04f15209a87:3042
+[    4903ms] [LOG] [TSDemuxer] > Generated first AVCDecoderConfigurationRecord for mimeType: avc1.4d401e @ blob:http://localhost:5181/1be49263-f81a-4376-981a-b04f15209a87:3042
+[    4924ms] [LOG] [MSEController] > Received Initialization Segment, mimeType: video/mp4;codecs=avc1.4d401e @ http://localhost:5181/node_modules/.vite/deps/mpegts__js.js?v=61f9059c:63
+[    4955ms] [LOG] [TSDemuxer] > Generated first AudioSpecificConfig for mimeType: mp4a.40.5 @ blob:http://localhost:5181/1be49263-f81a-4376-981a-b04f15209a87:3042
+[    4956ms] [LOG] [MSEController] > Received Initialization Segment, mimeType: audio/mp4;codecs=mp4a.40.5 @ http://localhost:5181/node_modules/.vite/deps/mpegts__js.js?v=61f9059c:63
+[    4957ms] [LOG] [player:mpegts-media-info] {mediaInfo: Object} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    9226ms] [LOG] [player:stats] {status: loading, engine: MPEGTS, bufferSeconds: 3.1, liveLatency: 3.1, bitrateKbps: null} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    9941ms] [LOG] [player:state] {state: canplay} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[    9944ms] [LOG] [player:state] {state: playing} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   15234ms] [LOG] [player:stats] {status: playing, engine: MPEGTS, bufferSeconds: 3.2, liveLatency: 3.2, bitrateKbps: null} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   17527ms] [LOG] [player:state] {state: waiting} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   17642ms] [LOG] [player:state] {state: canplay} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   17643ms] [LOG] [player:state] {state: playing} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   18960ms] [LOG] [player:state] {state: waiting} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   19400ms] [LOG] [player:state] {state: canplay} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   19400ms] [LOG] [player:state] {state: playing} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   19866ms] [WARNING] [IOController] > 8 bytes unconsumed data remain when flush buffer, dropped @ blob:http://localhost:5181/1be49263-f81a-4376-981a-b04f15209a87:3034
+[   19873ms] [LOG] [player:retry] {attempt: 1, reason: MPEGTS stream ended} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   19873ms] [LOG] [MSEController] > MediaSource onSourceEnded @ http://localhost:5181/node_modules/.vite/deps/mpegts__js.js?v=61f9059c:63
+[   66826ms] [LOG] [player:probe] {playbackUrl: http://localhost:5181/proxy?url=http%3A%2F%2Fghost…A80%2F01095391353%2F35319359010MM%2F80488&retry=1, probeUrl: http://localhost:5181/proxy/probe?url=http%3A%2F%2…A80%2F01095391353%2F35319359010MM%2F80488&retry=1, ok: true, status: 200, contentType: video/mp2t} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   66827ms] [LOG] [player:engine] {engine: mpegts, playbackUrl: http://localhost:5181/proxy?url=http%3A%2F%2Fghost…A80%2F01095391353%2F35319359010MM%2F80488&retry=1, providerUrl: http://ghost1.tv:80/01095391353/35319359010MM/80488, contentType: video/mp2t, attempt: 1} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   66851ms] [LOG] [player:state] {state: waiting} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   66871ms] [LOG] [player:state] {state: loadstart} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   66890ms] [LOG] [MSEController] > MediaSource onSourceOpen @ http://localhost:5181/node_modules/.vite/deps/mpegts__js.js?v=61f9059c:63
+[   67828ms] [LOG] [player:stats] {status: loading, engine: MPEGTS, bufferSeconds: 0, liveLatency: 0, bitrateKbps: null} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   70829ms] [LOG] [player:stall-detected] {reason: low buffer freeze, engine: MPEGTS, currentTime: 0, bufferAhead: 0, liveLatency: 0} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   70834ms] [LOG] [player:mpegts-recover] {reason: low buffer freeze} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   70858ms] [LOG] [player:retry] {attempt: 2, reason: The play() request was interrupted by a call to pause(). https://goo.gl/LdLk22} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202
+[   70859ms] [LOG] [player:state] {state: waiting} @ http://localhost:5181/src/components/player/IptvVideoPlayer.tsx?t=1778425175389:202

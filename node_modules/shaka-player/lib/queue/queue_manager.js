@@ -1,0 +1,455 @@
+/*! @license
+ * Shaka Player
+ * Copyright 2025 Google LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+goog.provide('shaka.queue.QueueManager');
+
+goog.require('goog.asserts');
+goog.require('shaka.Player');
+goog.require('shaka.config.RepeatMode');
+goog.require('shaka.util.Error');
+goog.require('shaka.util.EventManager');
+goog.require('shaka.util.FakeEvent');
+goog.require('shaka.util.FakeEventTarget');
+goog.require('shaka.util.IDestroyable');
+goog.require('shaka.util.Timer');
+goog.requireType('shaka.media.PreloadManager');
+
+/**
+ * @implements {shaka.extern.IQueueManager}
+ * @implements {shaka.util.IDestroyable}
+ * @export
+ */
+shaka.queue.QueueManager = class extends shaka.util.FakeEventTarget {
+  /**
+   * @param {shaka.Player} player
+   */
+  constructor(player) {
+    super();
+
+    /** @private {?shaka.Player} */
+    this.player_ = player;
+
+    /** @private {?shaka.extern.QueueConfiguration} */
+    this.config_ = null;
+
+    /** @private {!Array<shaka.extern.QueueItem>} */
+    this.items_ = [];
+
+    /** @private {number} */
+    this.currentItemIndex_ = -1;
+
+    /**
+     * @private {?{
+     *   item: shaka.extern.QueueItem,
+     *   preloadManager: ?shaka.media.PreloadManager,
+     * }}
+     */
+    this.preloadNext_ = null;
+
+    /**
+     * @private {?{
+     *   item: shaka.extern.QueueItem,
+     *   preloadManager: ?shaka.media.PreloadManager,
+     * }}
+     */
+    this.preloadPrev_ = null;
+
+    /** @private {shaka.util.EventManager} */
+    this.eventManager_ = new shaka.util.EventManager();
+
+    /** @private {?shaka.util.Timer} */
+    this.repeatTimer_ = null;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  async destroy() {
+    await this.removeAllItems();
+    this.player_ = null;
+    if (this.eventManager_) {
+      this.eventManager_.release();
+      this.eventManager_ = null;
+    }
+    if (this.repeatTimer_) {
+      this.repeatTimer_.stop();
+      this.repeatTimer_ = null;
+    }
+
+    // FakeEventTarget implements IReleasable
+    super.release();
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  configure(config) {
+    this.config_ = config;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getConfiguration() {
+    return this.config_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  setCustomPlayer(player) {
+    this.player_ = player;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getCurrentItem() {
+    if (this.items_.length && this.currentItemIndex_ >= 0 &&
+        this.currentItemIndex_ < this.items_.length) {
+      return this.items_[this.currentItemIndex_];
+    }
+    return null;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getCurrentItemIndex() {
+    return this.currentItemIndex_;
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  getItems() {
+    return this.items_.slice();
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  insertItems(items) {
+    this.items_.push(...items);
+    this.dispatchEvent(new shaka.util.FakeEvent(
+        shaka.util.FakeEvent.EventName.ItemsInserted));
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  async removeAllItems() {
+    this.eventManager_.removeAll();
+    if (this.player_ && this.items_.length && this.currentItemIndex_ >= 0) {
+      try {
+        await this.player_.unload();
+      } catch (e) {
+        // Ignore errors during unload
+      }
+    }
+    const promises = [];
+    if (this.preloadPrev_?.preloadManager &&
+        !this.preloadPrev_.preloadManager.isDestroyed()) {
+      promises.push(this.preloadPrev_.preloadManager.destroy());
+    }
+    this.preloadPrev_ = null;
+    if (this.preloadNext_?.preloadManager &&
+        !this.preloadNext_.preloadManager.isDestroyed()) {
+      promises.push(this.preloadNext_.preloadManager.destroy());
+    }
+    this.preloadNext_ = null;
+    for (const item of this.items_) {
+      if (item.preloadManager && !item.preloadManager.isDestroyed()) {
+        promises.push(item.preloadManager.destroy());
+      }
+    }
+    if (promises.length) {
+      await Promise.all(promises);
+    }
+    this.items_ = [];
+    this.currentItemIndex_ = -1;
+    this.dispatchEvent(new shaka.util.FakeEvent(
+        shaka.util.FakeEvent.EventName.ItemsRemoved));
+  }
+
+  /**
+   * @override
+   * @export
+   */
+  async playItem(itemIndex) {
+    goog.asserts.assert(this.player_, 'We should have player');
+    this.eventManager_.removeAll();
+    if (this.repeatTimer_) {
+      this.repeatTimer_.stop();
+      this.repeatTimer_ = null;
+    }
+    if (!this.items_.length || itemIndex < 0 ||
+        itemIndex >= this.items_.length) {
+      throw new shaka.util.Error(
+          shaka.util.Error.Severity.CRITICAL,
+          shaka.util.Error.Category.PLAYER,
+          shaka.util.Error.Code.QUEUE_INDEX_OUT_OF_BOUNDS);
+    }
+    const currentItem = this.getCurrentItem();
+    const item = this.items_[itemIndex];
+    if (this.currentItemIndex_ !== itemIndex) {
+      this.currentItemIndex_ = itemIndex;
+      this.dispatchEvent(new shaka.util.FakeEvent(
+          shaka.util.FakeEvent.EventName.CurrentItemChanged));
+    }
+
+    const mediaElement = this.player_.getMediaElement();
+
+    this.setupPreloadNext_(mediaElement);
+    this.setupRepeatOnComplete_(mediaElement);
+
+    const assetUriOrPreloader = this.getAssetOrPreloader_(item);
+
+    await this.cleanupPreloadPrev_(item, currentItem);
+
+    if (item.config) {
+      this.player_.resetConfiguration();
+      this.player_.configure(item.config);
+    }
+
+    if (item.extraText?.length ||
+        item.extraThumbnail?.length ||
+        item.extraChapter?.length) {
+      this.eventManager_.listenOnce(this.player_, 'streaming', async () => {
+        await this.addExtraTracks_(item);
+      });
+    }
+
+    await this.player_.load(assetUriOrPreloader, item.startTime, item.mimeType);
+
+    this.preloadNext_ = null;
+  }
+
+  /**
+   * Sets up preloading of the next item if applicable
+   *
+   * @param {HTMLMediaElement} mediaElement
+   * @private
+   */
+  setupPreloadNext_(mediaElement) {
+    if (!this.config_ || this.config_.preloadNextUrlWindow <= 0) {
+      return;
+    }
+
+    let preloadInProcess = false;
+
+    const listener = async () => {
+      if (this.preloadNext_ || this.items_.length <= 1 || preloadInProcess ||
+          this.player_.isDynamic() || !mediaElement.duration) {
+        return;
+      }
+
+      const timeToEnd = this.player_.seekRange().end - mediaElement.currentTime;
+      if (isNaN(timeToEnd) || timeToEnd > this.config_.preloadNextUrlWindow) {
+        return;
+      }
+
+      preloadInProcess = true;
+
+      let nextItem = null;
+      const repeatMode = this.config_.repeatMode;
+      const nextIndex = this.currentItemIndex_ + 1;
+
+      if (nextIndex < this.items_.length) {
+        nextItem = this.items_[nextIndex];
+      } else if (repeatMode === shaka.config.RepeatMode.ALL) {
+        nextItem = this.items_[0];
+      }
+
+      if (nextItem &&
+          (!nextItem.preloadManager || nextItem.preloadManager.isDestroyed())) {
+        try {
+          const preloadManager = await this.player_.preload(
+              nextItem.manifestUri, nextItem.startTime,
+              nextItem.mimeType, nextItem.config);
+          this.preloadNext_ = {item: nextItem, preloadManager};
+        } catch (e) {
+          // Ignore errors during preload
+          this.preloadNext_ = {item: nextItem, preloadManager: null};
+        }
+        // Remove listener once next item is preloaded
+        this.eventManager_.unlisten(mediaElement, 'timeupdate', listener);
+      }
+
+      preloadInProcess = false;
+    };
+
+    this.eventManager_.listen(mediaElement, 'timeupdate', listener);
+  }
+
+  /**
+   * Handles repeating the current item when paused
+   *
+   * @param {HTMLMediaElement} mediaElement
+   * @private
+   */
+  playCurrentItemAfterPause_(mediaElement) {
+    if (mediaElement.paused) {
+      mediaElement.currentTime = this.player_.seekRange().start;
+      mediaElement.play();
+    } else {
+      this.eventManager_.listenOnce(mediaElement, 'paused', () => {
+        mediaElement.currentTime = this.player_.seekRange().start;
+        mediaElement.play();
+      });
+    }
+  }
+
+  /**
+   * Sets up repeat behavior on playback completion
+   *
+   * @param {HTMLMediaElement} mediaElement
+   * @private
+   */
+  setupRepeatOnComplete_(mediaElement) {
+    this.eventManager_.listen(this.player_, 'complete', () => {
+      const repeatMode = this.config_?.repeatMode;
+
+      if (repeatMode === shaka.config.RepeatMode.OFF) {
+        return;
+      }
+
+      if (repeatMode === shaka.config.RepeatMode.SINGLE) {
+        this.playCurrentItemAfterPause_(mediaElement);
+        return;
+      }
+
+      const nextIndex = this.currentItemIndex_ + 1;
+      let targetIndex = null;
+
+      if (nextIndex < this.items_.length) {
+        targetIndex = nextIndex;
+      } else if (repeatMode === shaka.config.RepeatMode.ALL) {
+        targetIndex = (this.items_.length > 1) ? 0 : this.currentItemIndex_;
+      }
+
+      if (targetIndex !== null) {
+        if (targetIndex === this.currentItemIndex_) {
+          this.playCurrentItemAfterPause_(mediaElement);
+        } else {
+          if (this.repeatTimer_) {
+            this.repeatTimer_.stop();
+            this.repeatTimer_ = null;
+          }
+          this.repeatTimer_ = new shaka.util.Timer(() => {
+            goog.asserts.assert(targetIndex != null,
+                'targetIndex should not be null');
+            this.playItem(targetIndex).catch(() => {});
+          }).tickAfter(0);
+        }
+      }
+    });
+  }
+
+  /**
+   * Determines which asset to use: preloadPrev_, preloadNext_ or manifestUri
+   *
+   * @param {!shaka.extern.QueueItem} item
+   * @return {string|shaka.media.PreloadManager}
+   * @private
+   */
+  getAssetOrPreloader_(item) {
+    let asset = item.manifestUri;
+
+    if (item.preloadManager && !item.preloadManager.isDestroyed()) {
+      asset = item.preloadManager;
+    } else if (this.preloadNext_?.item === item &&
+        this.preloadNext_.preloadManager) {
+      asset = this.preloadNext_.preloadManager;
+    } else if (this.preloadPrev_?.item === item &&
+        this.preloadPrev_.preloadManager) {
+      asset = this.preloadPrev_.preloadManager;
+    }
+
+    return asset;
+  }
+
+  /**
+   * Cleans up preloadPrev_ if no longer needed and saves preload of the
+   * previous item
+   *
+   * @param {!shaka.extern.QueueItem} currentItem
+   * @param {?shaka.extern.QueueItem} previousItem
+   * @private
+   */
+  async cleanupPreloadPrev_(currentItem, previousItem) {
+    const usingPrev = this.preloadPrev_?.item === currentItem;
+
+    if (this.preloadPrev_ && !usingPrev && this.preloadPrev_.preloadManager &&
+        !this.preloadPrev_.preloadManager.isDestroyed()) {
+      await this.preloadPrev_.preloadManager.destroy();
+    }
+
+    this.preloadPrev_ = null;
+
+    if (this.config_?.preloadPrevItem && previousItem &&
+        this.player_.getLoadMode() === shaka.Player.LoadMode.MEDIA_SOURCE) {
+      try {
+        const preloadManager = await this.player_.unloadAndSavePreload(
+            /* initializeMediaSource= */ false, /* keepAdManager= */ false,
+            /* savePosition= */ false, /* isSwitchingContent= */ true);
+        this.preloadPrev_ = {item: previousItem, preloadManager};
+      } catch (e) {
+        this.preloadPrev_ = {item: previousItem, preloadManager: null};
+      }
+    }
+  }
+
+  /**
+   * Adds extra tracks (text, thumbnails, chapters) in parallel
+   *
+   * @param {!shaka.extern.QueueItem} item
+   * @return {!Promise}
+   * @private
+   */
+  async addExtraTracks_(item) {
+    const textPromises = item.extraText?.map(async (extraText) => {
+      if (extraText.mime) {
+        await this.player_.addTextTrackAsync(
+            extraText.uri, extraText.language,
+            extraText.kind, extraText.mime, extraText.codecs);
+      } else {
+        await this.player_.addTextTrackAsync(
+            extraText.uri, extraText.language, extraText.kind);
+      }
+    }) || [];
+
+    const thumbnailPromises = item.extraThumbnail?.map(async (thumb) => {
+      await this.player_.addThumbnailsTrack(thumb);
+    }) || [];
+
+    const chapterPromises = item.extraChapter?.map(async (chapter) => {
+      await this.player_.addChaptersTrack(
+          chapter.uri, chapter.language, chapter.mime);
+    }) || [];
+
+    await Promise.all([
+      ...textPromises,
+      ...thumbnailPromises,
+      ...chapterPromises,
+    ]);
+  }
+};
+
+
+shaka.Player.setQueueManagerFactory((player) => {
+  return new shaka.queue.QueueManager(player);
+});
+
