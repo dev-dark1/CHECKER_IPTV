@@ -1,4 +1,3 @@
-import Hls from "hls.js";
 import { useEffect, useRef, useState } from "react";
 
 interface MiniHlsPlayerProps {
@@ -19,8 +18,21 @@ export function MiniHlsPlayer({ sourceUrl, title }: MiniHlsPlayerProps) {
 
     setError("");
 
-    if (Hls.isSupported()) {
-      const hls = new Hls({
+    let cancelled = false;
+    let destroy = () => undefined;
+
+    void import("hls.js")
+      .then(({ default: Hls }) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (!Hls.isSupported()) {
+          setError("HLS.js is required for IPTV preview playback.");
+          return;
+        }
+
+        const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 90,
@@ -38,22 +50,29 @@ export function MiniHlsPlayer({ sourceUrl, title }: MiniHlsPlayerProps) {
         levelLoadingMaxRetry: 10,
         appendErrorMaxRetry: 10,
         progressive: true
-      });
+        });
 
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        if (data.fatal) {
-          setError(data.details || "HLS preview failed.");
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            setError(data.details || "HLS preview failed.");
+          }
+        });
+        hls.loadSource(sourceUrl);
+        hls.attachMedia(video);
+        destroy = () => {
+          hls.destroy();
+        };
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setError(error instanceof Error ? error.message : "HLS preview failed.");
         }
       });
-      hls.loadSource(sourceUrl);
-      hls.attachMedia(video);
 
-      return () => {
-        hls.destroy();
-      };
-    }
-
-    setError("HLS.js is required for IPTV preview playback.");
+    return () => {
+      cancelled = true;
+      destroy();
+    };
   }, [sourceUrl]);
 
   if (!sourceUrl) {

@@ -1,6 +1,25 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm ci",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/proxy",
+      "destination": "/api/server?__pathname=/proxy"
+    },
+    {
+      "source": "^/proxy/(.*)$",
+      "destination": "/api/server?__pathname=/proxy/$1"
+    },
+    {
+      "source": "^/api/(?!server(?:/|$))(.*)$",
+      "destination": "/api/server?__pathname=/api/$1"
+    },
+    {
+      "source": "/player",
+      "destination": "/index.html"
+    }
+  ]
 }

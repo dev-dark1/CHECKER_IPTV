@@ -13,7 +13,10 @@ import { markProxyFailure, markProxySuccess, selectProxyForRequest } from "./pro
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const distPath = path.resolve(__dirname, "../dist");
-const cacheRoot = path.resolve(__dirname, "../cache");
+const isVercelRuntime = Boolean(process.env.VERCEL);
+const cacheRoot = isVercelRuntime
+  ? path.join("/tmp", "checker-iptv-cache")
+  : path.resolve(__dirname, "../cache");
 const playlistCacheDir = path.join(cacheRoot, "playlists");
 const logoCacheDir = path.join(cacheRoot, "logos");
 const historyCacheDir = path.join(cacheRoot, "history");
@@ -48,10 +51,7 @@ const PLAYER_STATUS = {
   skipped: "not_tested"
 };
 const IPTV_REQUEST_HEADERS = {
-  Accept: "application/vnd.apple.mpegurl,application/x-mpegurl,audio/x-mpegurl,application/dash+xml,video/mp2t,video/mp4,application/octet-stream,*/*",
-  "User-Agent": "VLC/3.0.18 LibVLC/3.0.18",
-  Referer: "https://google.com",
-  Origin: "*"
+  "User-Agent": "VLC/3.0.18 LibVLC/3.0.18"
 };
 const PROXY_FAILOVER_PLAN = [0, 1, 2, 3, 3, 3];
 const proxyAgents = new Map();
@@ -102,6 +102,85 @@ function buildProxyPath(req, targetUrl) {
 
 function buildAbsoluteProxyUrl(req, targetUrl) {
   return `${getRequestOrigin(req)}${buildProxyPath(req, targetUrl)}`;
+}
+
+function parseXtreamLiveTarget(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+
+    if (segments.length === 3) {
+      const [username, password, streamPart] = segments;
+      const match = streamPart.match(/^([^/?#.]+?)(?:\.([a-z0-9]+))?$/i);
+
+      if (!match) {
+        return null;
+      }
+
+      return {
+        parsed,
+        username,
+        password,
+        streamId: match[1],
+        extension: match[2]?.toLowerCase() || null,
+        kind: "raw"
+      };
+    }
+
+    if (segments.length === 4 && /^live$/i.test(segments[0])) {
+      const [, username, password, streamPart] = segments;
+      const match = streamPart.match(/^([^/?#.]+?)(?:\.([a-z0-9]+))?$/i);
+
+      if (!match) {
+        return null;
+      }
+
+      return {
+        parsed,
+        username,
+        password,
+        streamId: match[1],
+        extension: match[2]?.toLowerCase() || null,
+        kind: "live"
+      };
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function buildProxyTargetCandidates(targetUrl) {
+  const xtreamTarget = parseXtreamLiveTarget(targetUrl);
+
+  if (!xtreamTarget) {
+    return [targetUrl];
+  }
+
+  if (xtreamTarget.kind === "live" && xtreamTarget.extension) {
+    return [targetUrl];
+  }
+
+  const { parsed, username, password, streamId, extension } = xtreamTarget;
+  const suffix = `${parsed.search}${parsed.hash}`;
+  const candidates = [];
+  const pushCandidate = (value) => {
+    if (!candidates.includes(value)) {
+      candidates.push(value);
+    }
+  };
+
+  pushCandidate(`${parsed.origin}/live/${username}/${password}/${streamId}.m3u8${suffix}`);
+
+  if (extension && extension !== "m3u8") {
+    pushCandidate(`${parsed.origin}/live/${username}/${password}/${streamId}.${extension}${suffix}`);
+  }
+
+  pushCandidate(`${parsed.origin}/live/${username}/${password}/${streamId}.ts${suffix}`);
+  pushCandidate(targetUrl);
+
+  return candidates;
 }
 
 function isHlsPlaylistUrl(targetUrl) {
@@ -1013,9 +1092,22 @@ function copyResponseHeaders(response, res) {
   if (contentRange) res.setHeader("Content-Range", contentRange);
 }
 
-function buildUpstreamHeaders(req, extra = {}) {
+function buildUpstreamAcceptHeader(targetUrl) {
+  if (isHlsPlaylistUrl(targetUrl)) {
+    return "application/vnd.apple.mpegurl,application/x-mpegurl,audio/x-mpegurl,*/*";
+  }
+
+  if (isDashManifestUrl(targetUrl)) {
+    return "application/dash+xml,*/*";
+  }
+
+  return "*/*";
+}
+
+function buildUpstreamHeaders(req, targetUrl, extra = {}) {
   const headers = {
     ...IPTV_REQUEST_HEADERS,
+    Accept: buildUpstreamAcceptHeader(targetUrl),
     ...extra
   };
 
@@ -1023,11 +1115,16 @@ function buildUpstreamHeaders(req, extra = {}) {
     headers.Range = req.headers.range;
   }
 
+  const incomingUserAgent = typeof req.headers["user-agent"] === "string" ? req.headers["user-agent"] : "";
+  if (incomingUserAgent && !/playwright|headless|chrome\/\d+/i.test(incomingUserAgent)) {
+    headers["User-Agent"] = incomingUserAgent;
+  }
+
   return headers;
 }
 
 async function fetchUpstream(targetUrl, { req, proxyUrl = null, timeoutMs = 25000, range = null } = {}) {
-  const headers = buildUpstreamHeaders(req, range ? { Range: range } : {});
+  const headers = buildUpstreamHeaders(req, targetUrl, range ? { Range: range } : {});
   const dispatcher = getProxyAgent(proxyUrl);
   const controller = timeoutMs ? new AbortController() : null;
   const timeout = controller
@@ -1151,96 +1248,100 @@ function buildFailoverPlan(req) {
 
 async function fetchBestUpstream(req, targetUrl) {
   const plan = buildFailoverPlan(req);
+  const targetQueue = buildProxyTargetCandidates(targetUrl);
   let lastError = null;
 
-  for (const failoverIndex of plan) {
-    const choice = await selectProxyForRequest({ failoverIndex });
+  for (const candidateTarget of targetQueue) {
+    for (const failoverIndex of plan) {
+      const choice = await selectProxyForRequest({ failoverIndex });
 
-    if (choice.poolName !== "direct" && !choice.proxyUrl) {
-      logProxy("skip-empty-pool", { url: targetUrl, pool: choice.poolName });
-      continue;
-    }
-
-    if (choice.proxyUrl) {
-      const valid = await validateExternalProxy({ req, targetUrl, choice });
-      if (!valid) {
-        continue;
-      }
-    }
-
-    const started = Date.now();
-
-    try {
-      logProxy("request", {
-        originalUrl: targetUrl,
-        selectedProxy: choice.proxyUrl || "local-relay",
-        pool: choice.poolName
-      });
-
-      const response = await fetchUpstream(targetUrl, {
-        req,
-        proxyUrl: choice.proxyUrl,
-        timeoutMs: 30000
-      });
-      const contentType = response.headers.get("content-type") || "application/octet-stream";
-
-      logProxy("response", {
-        originalUrl: targetUrl,
-        selectedProxy: choice.proxyUrl || "local-relay",
-        pool: choice.poolName,
-        status: response.status,
-        contentType,
-        latencyMs: Date.now() - started
-      });
-
-      if ([401, 403, 451, 429].includes(response.status)) {
-        if (choice.proxyUrl) {
-          markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
-        }
-        lastError = new Error(`Upstream blocked request with ${response.status}`);
+      if (choice.poolName !== "direct" && !choice.proxyUrl) {
+        logProxy("skip-empty-pool", { url: targetUrl, candidateUrl: candidateTarget, pool: choice.poolName });
         continue;
       }
 
-      if (!response.ok && response.status !== 206) {
-        if (choice.proxyUrl) {
-          markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+      if (choice.proxyUrl) {
+        const valid = await validateExternalProxy({ req, targetUrl: candidateTarget, choice });
+        if (!valid) {
+          continue;
         }
-        lastError = new Error(`Upstream returned ${response.status}`);
-        continue;
       }
 
-      if (!isAllowedStreamContentType(contentType, targetUrl)) {
-        if (choice.proxyUrl) {
-          markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+      const started = Date.now();
+
+      try {
+        logProxy("request", {
+          originalUrl: targetUrl,
+          candidateUrl: candidateTarget,
+          selectedProxy: choice.proxyUrl || "local-relay",
+          pool: choice.poolName
+        });
+
+        const response = await fetchUpstream(candidateTarget, {
+          req,
+          proxyUrl: choice.proxyUrl,
+          timeoutMs: 30000
+        });
+        const contentType = response.headers.get("content-type") || "application/octet-stream";
+
+        logProxy("response", {
+          originalUrl: targetUrl,
+          candidateUrl: candidateTarget,
+          selectedProxy: choice.proxyUrl || "local-relay",
+          pool: choice.poolName,
+          status: response.status,
+          contentType,
+          latencyMs: Date.now() - started
+        });
+
+        if ([401, 403, 451, 429].includes(response.status)) {
+          if (choice.proxyUrl) {
+            markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+          }
+          lastError = new Error(`Upstream blocked request with ${response.status}`);
+          continue;
         }
-        lastError = new Error(`Rejected invalid stream content-type: ${contentType}`);
-        if (isRejectedTextContent(contentType)) {
-          lastError.noProxyFallback = true;
+
+        if (!response.ok && response.status !== 206) {
+          if (choice.proxyUrl) {
+            markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+          }
+          lastError = new Error(`Upstream returned ${response.status}`);
+          continue;
+        }
+
+        if (!isAllowedStreamContentType(contentType, candidateTarget)) {
+          if (choice.proxyUrl) {
+            markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+          }
+          lastError = new Error(`Rejected invalid stream content-type: ${contentType}`);
           lastError.statusCode = 415;
-          throw lastError;
+
+          if (isRejectedTextContent(contentType)) {
+            break;
+          }
+
+          continue;
         }
-        continue;
-      }
 
-      if (choice.proxyUrl) {
-        markProxySuccess({ poolName: choice.poolName, proxyUrl: choice.proxyUrl, latencyMs: Date.now() - started });
-      }
+        if (choice.proxyUrl) {
+          markProxySuccess({ poolName: choice.poolName, proxyUrl: choice.proxyUrl, latencyMs: Date.now() - started });
+        }
 
-      return { response, choice, contentType };
-    } catch (error) {
-      lastError = error;
-      if (error?.noProxyFallback) {
-        throw error;
-      }
-      logProxy("request-error", {
-        originalUrl: targetUrl,
-        selectedProxy: choice.proxyUrl || "local-relay",
-        pool: choice.poolName,
-        error: error instanceof Error ? error.message : "upstream request failed"
-      });
+        return { response, choice, contentType, resolvedUrl: candidateTarget };
+      } catch (error) {
+        lastError = error;
+        logProxy("request-error", {
+          originalUrl: targetUrl,
+          candidateUrl: candidateTarget,
+          selectedProxy: choice.proxyUrl || "local-relay",
+          pool: choice.poolName,
+          error: error instanceof Error ? error.message : "upstream request failed"
+        });
 
-      if (choice.proxyUrl) {
-        markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+        if (choice.proxyUrl) {
+          markProxyFailure({ poolName: choice.poolName, proxyUrl: choice.proxyUrl });
+        }
       }
     }
   }
@@ -1270,32 +1371,36 @@ async function proxyStreamToResponse(req, res, targetUrl) {
     return sendProxyFailure(res, error?.statusCode || 502, error instanceof Error ? error.message : "Stream proxy failed.");
   }
 
-  const { response, choice, contentType } = upstream;
+  const { response, choice, contentType, resolvedUrl } = upstream;
+  const playbackUrl = resolvedUrl || normalizedTarget;
 
   if (isRejectedTextContent(contentType)) {
     return sendProxyFailure(res, 415, "Rejected HTML/text response instead of stream.", {
       contentType,
-      status: response.status
+      status: response.status,
+      resolvedUrl: playbackUrl
     });
   }
 
-  if (isHlsPlaylistUrl(normalizedTarget) || /mpegurl/i.test(contentType)) {
+  if (isHlsPlaylistUrl(playbackUrl) || /mpegurl/i.test(contentType)) {
     const text = await response.text();
 
     if (looksLikeHtmlError(text) || !/#EXTM3U/i.test(text.slice(0, 1024))) {
       return sendProxyFailure(res, 415, "Rejected invalid HLS manifest.", {
         contentType,
-        status: response.status
+        status: response.status,
+        resolvedUrl: playbackUrl
       });
     }
 
-    const { body, rewrites } = rewriteHlsPlaylistToProxy(text, normalizedTarget, req);
+    const { body, rewrites } = rewriteHlsPlaylistToProxy(text, playbackUrl, req);
     res.status(response.status);
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
     logProxy("playlist", {
       originalUrl: normalizedTarget,
+      resolvedUrl: playbackUrl,
       selectedProxy: choice.proxyUrl || "local-relay",
       contentType,
       status: response.status,
@@ -1359,7 +1464,7 @@ app.get("/proxy/probe", async (req, res) => {
   }
 
   try {
-    const { response, choice, contentType } = await fetchBestUpstream(req, normalizedTarget);
+    const { response, choice, contentType, resolvedUrl } = await fetchBestUpstream(req, normalizedTarget);
     const probeText = response.body ? await readResponseProbe(response) : "";
     const blockedBody = looksLikeHtmlError(probeText);
     const ok = !blockedBody && isAllowedStreamContentType(contentType, normalizedTarget);
@@ -1367,6 +1472,7 @@ app.get("/proxy/probe", async (req, res) => {
     return res.status(ok ? 200 : 415).json({
       ok,
       url: normalizedTarget,
+      resolvedUrl: resolvedUrl || normalizedTarget,
       status: response.status,
       contentType,
       selectedProxy: choice.proxyUrl || "local-relay",
@@ -1434,8 +1540,12 @@ if (fs.existsSync(distPath)) {
   });
 }
 
+const isDirectRun = process.argv[1] && path.resolve(process.argv[1]) === __filename;
 
+if (isDirectRun) {
+  app.listen(port, () => {
+    console.log(`M3U Active Checker server listening on http://localhost:${port}`);
+  });
+}
 
-app.listen(port, () => {
-  console.log(`M3U Active Checker server listening on http://localhost:${port}`);
-});
+export default app;

@@ -46,9 +46,9 @@
       rgba(0, 0, 0, 0.42);
     border: 1px solid rgba(255, 255, 255, 0.1);
     box-shadow:
-      0 24px 90px rgba(2, 10, 21, 0.62),
+      0 18px 64px rgba(2, 10, 21, 0.5),
       inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(24px);
+    backdrop-filter: blur(16px);
   }
 
   .iptv-player-shell {
@@ -116,6 +116,21 @@
 @media (display-mode: standalone) {
   body {
     overscroll-behavior: none;
+  }
+}
+
+@media (max-width: 960px), (pointer: coarse) {
+  .glass-panel {
+    box-shadow:
+      0 14px 42px rgba(2, 10, 21, 0.42),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-sheen {
+    animation: none;
   }
 }
 

@@ -16,9 +16,6 @@ import {
   Volume2,
   VolumeX
 } from "lucide-react";
-import Hls from "hls.js";
-import mpegts from "mpegts.js";
-import shaka from "shaka-player/dist/shaka-player.compiled";
 import {
   forwardRef,
   useCallback,
@@ -68,6 +65,15 @@ interface IptvVideoPlayerProps {
 
 type PlaybackEngine = "hls" | "mpegts" | "shaka";
 type QualityMode = "auto" | `hls-${number}` | `shaka-${number}`;
+type HlsModule = typeof import("hls.js");
+type HlsNamespace = HlsModule["default"];
+type HlsInstance = InstanceType<HlsNamespace>;
+type MpegtsModule = typeof import("mpegts.js");
+type MpegtsNamespace = MpegtsModule["default"];
+type MpegtsPlayer = ReturnType<MpegtsNamespace["createPlayer"]>;
+type ShakaModule = typeof import("shaka-player/dist/shaka-player.compiled");
+type ShakaNamespace = ShakaModule["default"];
+type ShakaPlayerInstance = InstanceType<ShakaNamespace["Player"]>;
 
 interface ProbePayload {
   ok?: boolean;
@@ -110,6 +116,10 @@ type WakeLockSentinelLike = {
   addEventListener?: (type: "release", listener: () => void) => void;
 };
 
+let hlsModulePromise: Promise<HlsModule> | null = null;
+let mpegtsModulePromise: Promise<MpegtsModule> | null = null;
+let shakaModulePromise: Promise<ShakaModule> | null = null;
+
 const HLS_CONFIG = {
   enableWorker: true,
   lowLatencyMode: false,
@@ -128,7 +138,7 @@ const HLS_CONFIG = {
   levelLoadingMaxRetry: 10,
   appendErrorMaxRetry: 10,
   progressive: true
-} satisfies Partial<Hls["config"]>;
+};
 
 const MPEGTS_CONFIG = {
   enableWorker: true,
@@ -151,6 +161,30 @@ const HARD_STALL_MS = 9500;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function loadHlsModule() {
+  if (!hlsModulePromise) {
+    hlsModulePromise = import("hls.js");
+  }
+
+  return hlsModulePromise;
+}
+
+function loadMpegtsModule() {
+  if (!mpegtsModulePromise) {
+    mpegtsModulePromise = import("mpegts.js");
+  }
+
+  return mpegtsModulePromise;
+}
+
+function loadShakaModule() {
+  if (!shakaModulePromise) {
+    shakaModulePromise = import("shaka-player/dist/shaka-player.compiled");
+  }
+
+  return shakaModulePromise;
 }
 
 function extractProviderUrl(playbackUrl: string) {
@@ -229,6 +263,10 @@ function buildProbeUrl(playbackUrl: string) {
   return probe.toString();
 }
 
+function isMissingProxyRouteError(message: string) {
+  return /proxy probe failed with 404/i.test(message) || /failed with 404/i.test(message);
+}
+
 function getConnectionKbps() {
   const connection = (navigator as Navigator & {
     connection?: { downlink?: number; effectiveType?: string; saveData?: boolean };
@@ -249,11 +287,11 @@ function getNetworkProfile() {
   const effectiveType = connection?.effectiveType || "unknown";
   const saveData = Boolean(connection?.saveData);
 
-  if (saveData || /2g/i.test(effectiveType) || (kbps !== null && kbps < 1800)) {
+  if (saveData || /2g/i.test(effectiveType)) {
     return { kbps, tier: "weak" as const, maxHeight: 720 };
   }
 
-  if (/3g/i.test(effectiveType) || (kbps !== null && kbps < 5500)) {
+  if (/3g/i.test(effectiveType) || (kbps !== null && kbps < 1800)) {
     return { kbps, tier: "medium" as const, maxHeight: 1080 };
   }
 
@@ -336,9 +374,9 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
     ref
   ) {
     const videoRef = useRef<HTMLVideoElement | null>(null);
-    const hlsRef = useRef<Hls | null>(null);
-    const mpegtsRef = useRef<ReturnType<typeof mpegts.createPlayer> | null>(null);
-    const shakaRef = useRef<shaka.Player | null>(null);
+    const hlsRef = useRef<HlsInstance | null>(null);
+    const mpegtsRef = useRef<MpegtsPlayer | null>(null);
+    const shakaRef = useRef<ShakaPlayerInstance | null>(null);
     const watchdogTimerRef = useRef<number | null>(null);
     const retryTimerRef = useRef<number | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -753,7 +791,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
 
         if (shakaRef.current) {
           try {
-            (shakaRef.current as shaka.Player & { retryStreaming?: () => void }).retryStreaming?.();
+            (shakaRef.current as ShakaPlayerInstance & { retryStreaming?: () => void }).retryStreaming?.();
             seekToLiveEdge(video);
             void safePlay(video).catch(() => undefined);
             logPlayer("shaka-recover", { reason });
@@ -942,7 +980,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
       return payload;
     }, []);
 
-    const applyHlsQuality = useCallback((hls: Hls, mode: QualityMode) => {
+    const applyHlsQuality = useCallback((hls: HlsInstance, mode: QualityMode) => {
       const networkProfile = getNetworkProfile();
       if (mode === "auto") {
         hls.currentLevel = -1;
@@ -964,8 +1002,8 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
       }
     }, []);
 
-    const applyShakaQuality = useCallback((player: shaka.Player, mode: QualityMode) => {
-      const playerWithTracks = player as shaka.Player & {
+    const applyShakaQuality = useCallback((player: ShakaPlayerInstance, mode: QualityMode) => {
+      const playerWithTracks = player as ShakaPlayerInstance & {
         getVariantTracks: () => Array<{ id: number; height?: number; bandwidth?: number }>;
         selectVariantTrack: (track: { id: number }, clearBuffer?: boolean) => void;
       };
@@ -1027,7 +1065,9 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
     );
 
     const loadHls = useCallback(
-      (video: HTMLVideoElement, playbackUrl: string, loadId: number, fail: (reason: string) => void) => {
+      async (video: HTMLVideoElement, playbackUrl: string, loadId: number, fail: (reason: string) => void) => {
+        const { default: Hls } = await loadHlsModule();
+
         if (!Hls.isSupported()) {
           fail("HLS.js is not supported in this browser");
           return;
@@ -1108,7 +1148,9 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
     );
 
     const loadMpegTs = useCallback(
-      (video: HTMLVideoElement, playbackUrl: string, fail: (reason: string) => void) => {
+      async (video: HTMLVideoElement, playbackUrl: string, fail: (reason: string) => void) => {
+        const { default: mpegts } = await loadMpegtsModule();
+
         if (!mpegts.isSupported()) {
           fail("MPEGTS.js is not supported in this browser");
           return;
@@ -1158,6 +1200,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
 
     const loadShaka = useCallback(
       async (video: HTMLVideoElement, playbackUrl: string, fail: (reason: string) => void) => {
+        const { default: shaka } = await loadShakaModule();
         shaka.polyfill.installAll();
 
         if (!shaka.Player.isBrowserSupported()) {
@@ -1194,7 +1237,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
           const detail = (event as CustomEvent).detail;
           logPlayer("shaka-error", { detail });
           if (detail?.severity === shaka.util.Error.Severity.RECOVERABLE) {
-            (player as shaka.Player & { retryStreaming?: () => void }).retryStreaming?.();
+            (player as ShakaPlayerInstance & { retryStreaming?: () => void }).retryStreaming?.();
             return;
           }
           fail(detail?.message || detail?.code || "Shaka Player error");
@@ -1215,7 +1258,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
         shakaRef.current = player;
         await player.load(playbackUrl);
 
-        const playerWithTracks = player as shaka.Player & {
+        const playerWithTracks = player as ShakaPlayerInstance & {
           getVariantTracks: () => Array<{ id: number; height?: number; bandwidth?: number; active?: boolean }>;
         };
         const tracks = playerWithTracks.getVariantTracks();
@@ -1279,8 +1322,28 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
         setupMediaListeners(video, loadId, fail);
 
         try {
-          const probe = await probeBeforePlayback(playbackUrl, controller.signal);
-          const selectedEngine = engineFromUrl(playbackUrl) || engineFromContentType(probe.contentType);
+          let probe: ProbePayload | null = null;
+          let effectivePlaybackUrl = playbackUrl;
+          let selectedEngine: PlaybackEngine | null = null;
+
+          try {
+            probe = await probeBeforePlayback(playbackUrl, controller.signal);
+            selectedEngine = engineFromUrl(playbackUrl) || engineFromContentType(probe.contentType);
+          } catch (probeError) {
+            const reason = probeError instanceof Error ? probeError.message : "playback setup failed";
+
+            if (isMissingProxyRouteError(reason)) {
+              effectivePlaybackUrl = extractProviderUrl(sourceUrl);
+              selectedEngine = engineFromUrl(effectivePlaybackUrl);
+              logPlayer("direct-fallback", {
+                reason,
+                fallbackUrl: effectivePlaybackUrl,
+                engine: selectedEngine
+              });
+            } else {
+              throw probeError;
+            }
+          }
 
           if (!selectedEngine) {
             fail("no strict playback engine matched this stream URL/content-type");
@@ -1292,25 +1355,25 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
           setEngineLabel(engineName);
           logPlayer("engine", {
             engine: selectedEngine,
-            playbackUrl,
-            providerUrl: extractProviderUrl(playbackUrl),
-            contentType: probe.contentType,
+            playbackUrl: effectivePlaybackUrl,
+            providerUrl: extractProviderUrl(effectivePlaybackUrl),
+            contentType: probe?.contentType || null,
             attempt
           });
 
           startWatchdog(loadId, fail);
 
           if (selectedEngine === "hls") {
-            loadHls(video, playbackUrl, loadId, fail);
+            await loadHls(video, effectivePlaybackUrl, loadId, fail);
             return;
           }
 
           if (selectedEngine === "mpegts") {
-            loadMpegTs(video, playbackUrl, fail);
+            await loadMpegTs(video, effectivePlaybackUrl, fail);
             return;
           }
 
-          await loadShaka(video, playbackUrl, fail);
+          await loadShaka(video, effectivePlaybackUrl, fail);
         } catch (loadError) {
           if (controller.signal.aborted || loadIdRef.current !== loadId) return;
           fail(loadError instanceof Error ? loadError.message : "playback setup failed");
@@ -1369,7 +1432,7 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
       preloadControllerRef.current?.abort();
       preloadControllerRef.current = null;
 
-      if (!preloadUrl || mini) {
+      if (!preloadUrl || mini || getNetworkProfile().tier !== "strong") {
         return;
       }
 

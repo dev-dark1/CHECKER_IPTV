@@ -38,7 +38,7 @@ function completeUrl(value: string) {
         parsed.searchParams.set("type", "m3u_plus");
       }
       if (!parsed.searchParams.get("output")) {
-        parsed.searchParams.set("output", "ts");
+        parsed.searchParams.set("output", "m3u8");
       }
       return parsed.toString();
     }
