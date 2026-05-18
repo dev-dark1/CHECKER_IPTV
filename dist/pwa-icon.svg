@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="CHECKER IPTV">
-  <rect width="512" height="512" rx="112" fill="#02040a"/>
-  <path d="M112 172c0-33 27-60 60-60h168c33 0 60 27 60 60v116c0 33-27 60-60 60H172c-33 0-60-27-60-60V172Z" fill="#07111f" stroke="#12d9ff" stroke-width="18"/>
-  <path d="M210 192v76l72-38-72-38Z" fill="#39ff88"/>
-  <path d="M178 390h156" stroke="#12d9ff" stroke-width="24" stroke-linecap="round"/>
-  <path d="M232 348h48v42h-48z" fill="#12d9ff"/>
-</svg>
