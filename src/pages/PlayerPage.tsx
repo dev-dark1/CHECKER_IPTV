@@ -33,6 +33,15 @@ function completeUrl(value: string) {
   try {
     const parsed = new URL(value.trim());
 
+    if (/\/player_api\.php$/i.test(parsed.pathname)) {
+      const playlistUrl = new URL("/get.php", parsed.origin);
+      playlistUrl.searchParams.set("username", parsed.searchParams.get("username") || "");
+      playlistUrl.searchParams.set("password", parsed.searchParams.get("password") || "");
+      playlistUrl.searchParams.set("type", "m3u_plus");
+      playlistUrl.searchParams.set("output", parsed.searchParams.get("output") || "m3u8");
+      return playlistUrl.toString();
+    }
+
     if (/\/get\.php$/i.test(parsed.pathname)) {
       if (!parsed.searchParams.get("type")) {
         parsed.searchParams.set("type", "m3u_plus");

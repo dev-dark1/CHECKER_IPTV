@@ -1,5 +1,15 @@
 import { create } from "zustand";
-import { deletePlaylistFromServerCache, fetchRemotePlaylistText, fetchServerCachedPlaylists, fetchServerHistory, getPlayableStreamUrl, saveHistoryToServer, savePlaylistToServerCache } from "../lib/playerApi";
+import {
+  deletePlaylistFromServerCache,
+  fetchRemotePlaylistText,
+  fetchServerCachedPlaylists,
+  fetchServerFavorites,
+  fetchServerHistory,
+  getPlayableStreamUrl,
+  saveFavoritesToServer,
+  saveHistoryToServer,
+  savePlaylistToServerCache
+} from "../lib/playerApi";
 import { getAllPlaylistsFromDb, getFavoritesFromDb, getPlayerSettingsFromDb, getRecentChannelsFromDb, saveFavoritesToDb, savePlayerSettingsToDb, savePlaylistToDb, saveRecentChannelsToDb, deletePlaylistFromDb } from "../lib/playerPersistence";
 import { parsePlaylistInWorker } from "../lib/parsePlaylistInWorker";
 import { buildBrowserPlayableUrl } from "../lib/playerUrl";
@@ -10,6 +20,15 @@ function completeM3uUrl(value: string) {
 
   try {
     const parsed = new URL(trimmed);
+
+    if (/\/player_api\.php$/i.test(parsed.pathname)) {
+      const playlistUrl = new URL("/get.php", parsed.origin);
+      playlistUrl.searchParams.set("username", parsed.searchParams.get("username") || "");
+      playlistUrl.searchParams.set("password", parsed.searchParams.get("password") || "");
+      playlistUrl.searchParams.set("type", "m3u_plus");
+      playlistUrl.searchParams.set("output", parsed.searchParams.get("output") || "m3u8");
+      return playlistUrl.toString();
+    }
 
     if (/\/get\.php$/i.test(parsed.pathname)) {
       if (!parsed.searchParams.get("type")) {
@@ -122,11 +141,12 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => ({
     set({ loading: true });
 
     try {
-      const [localPlaylists, serverPlaylists, favorites, settings, dbHistory, serverHistory] =
+      const [localPlaylists, serverPlaylists, localFavorites, serverFavorites, settings, dbHistory, serverHistory] =
         await Promise.all([
           getAllPlaylistsFromDb(),
           fetchServerCachedPlaylists(),
           getFavoritesFromDb(),
+          fetchServerFavorites(),
           getPlayerSettingsFromDb(),
           getRecentChannelsFromDb(),
           fetchServerHistory()
@@ -149,6 +169,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => ({
         .sort((a, b) => String(b.playedAt).localeCompare(String(a.playedAt)))
         .filter((entry, index, array) => array.findIndex((item) => item.channelId === entry.channelId && item.playlistId === entry.playlistId) === index)
         .slice(0, 40);
+      const favorites = Array.from(new Set([...serverFavorites, ...localFavorites]));
       const playlists = Array.from(mergedPlaylists.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       const activePlaylist =
         playlists.find((playlist) => playlist.id === settings.lastPlaylistId) ||
@@ -310,7 +331,7 @@ export const usePlayerStore = create<PlayerStoreState>((set, get) => ({
       ? get().favorites.filter((value) => value !== key)
       : [key, ...get().favorites];
     set({ favorites: next });
-    await saveFavoritesToDb(next);
+    await Promise.all([saveFavoritesToDb(next), saveFavoritesToServer(next)]);
   },
   setSidebarView: async (view) => {
     set({ sidebarView: view });

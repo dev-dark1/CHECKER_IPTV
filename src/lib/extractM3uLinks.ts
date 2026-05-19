@@ -1,6 +1,7 @@
 import type { ExtractionSummary } from "../types";
 
-const M3U_REGEX = /(https?:\/\/[^\s]+get\.php\?username=[^\s]+type=m3u[^\s]*)/gi;
+const IPTV_URL_REGEX =
+  /(https?:\/\/[^\s]+(?:get\.php\?username=[^\s]+type=m3u[^\s]*|player_api\.php\?username=[^\s]+password=[^\s]*))/gi;
 const TRAILING_JUNK_REGEX = /[)\]}>,"'`]+$/g;
 const SAFE_URL_REGEX = /https?:\/\/[A-Za-z0-9._~:/?#[\]@!$&*+,;=%-]+/i;
 
@@ -16,12 +17,13 @@ function isValidM3uUrl(candidate: string) {
     const parsed = new URL(candidate);
     const username = parsed.searchParams.get("username");
     const type = (parsed.searchParams.get("type") || "").toLowerCase();
+    const password = parsed.searchParams.get("password");
 
     return (
       /^https?:$/i.test(parsed.protocol) &&
-      /\/get\.php$/i.test(parsed.pathname) &&
       Boolean(username) &&
-      type.includes("m3u")
+      ((/\/get\.php$/i.test(parsed.pathname) && type.includes("m3u")) ||
+        (/\/player_api\.php$/i.test(parsed.pathname) && Boolean(password)))
     );
   } catch {
     return false;
@@ -29,7 +31,7 @@ function isValidM3uUrl(candidate: string) {
 }
 
 export function extractM3uLinks(rawText: string): ExtractionSummary {
-  const matches = rawText.match(M3U_REGEX) ?? [];
+  const matches = rawText.match(IPTV_URL_REGEX) ?? [];
   const uniqueLinks: string[] = [];
   const seen = new Set<string>();
   let duplicatesRemoved = 0;

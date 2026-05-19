@@ -1,7 +1,10 @@
+import { motion } from "framer-motion";
 import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ActiveResultCard } from "../components/ActiveResultCard";
 import { GlassPanel } from "../components/GlassPanel";
 import { LogsConsole } from "../components/LogsConsole";
+import { buildApiUrl } from "../lib/api";
+import { buildSessionHeaders } from "../lib/session";
 import { UploadDropzone } from "../components/UploadDropzone";
 import { extractM3uLinks } from "../lib/extractM3uLinks";
 import { formatMessage, translations } from "../lib/translations";
@@ -28,6 +31,24 @@ function downloadTextFile(content: string, filename: string) {
   anchor.download = filename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+function downloadJsonFile(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildPlaylistExport(urls: string[]) {
+  return `#EXTM3U\n${urls
+    .map((url, index) => `#EXTINF:-1 tvg-id=\"active-${index + 1}\" group-title=\"Active Links\",Active Link ${index + 1}\n${url}`)
+    .join("\n")}`;
 }
 
 export function CheckerPage({ lang }: CheckerPageProps) {
@@ -57,7 +78,10 @@ export function CheckerPage({ lang }: CheckerPageProps) {
   useEffect(() => {
     const controller = new AbortController();
 
-    void fetch("/api/health", { signal: controller.signal })
+    void fetch(buildApiUrl("/api/health"), {
+      signal: controller.signal,
+      headers: buildSessionHeaders()
+    })
       .then((response) => response.json())
       .then((payload) => {
         setHealthOk(Boolean(payload?.ok));
@@ -148,6 +172,38 @@ export function CheckerPage({ lang }: CheckerPageProps) {
     setRuntimeLogs((current) => [...current, entry]);
   };
 
+  const persistScanSummary = async (payload: Record<string, unknown>) => {
+    try {
+      await fetch(buildApiUrl("/api/checker/scan-history"), {
+        method: "POST",
+        headers: buildSessionHeaders({
+          "Content-Type": "application/json"
+        }),
+        body: JSON.stringify(payload)
+      });
+    } catch {
+      // analytics persistence is best-effort
+    }
+  };
+
+  const persistExportEvent = async (format: string, activeUrls: string[]) => {
+    try {
+      await fetch(buildApiUrl("/api/checker/export"), {
+        method: "POST",
+        headers: buildSessionHeaders({
+          "Content-Type": "application/json"
+        }),
+        body: JSON.stringify({
+          format,
+          activeCount: activeUrls.length,
+          urls: activeUrls.slice(0, 50)
+        })
+      });
+    } catch {
+      // export persistence is best-effort
+    }
+  };
+
   const copyToClipboard = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -157,12 +213,35 @@ export function CheckerPage({ lang }: CheckerPageProps) {
     }
   };
 
-  const exportActiveLinks = () => {
-    if (activeResults.length === 0) {
+  const exportActiveLinks = (format: "txt" | "m3u" | "m3u8" | "json" | "report") => {
+    const activeUrls = activeResults.map((item) => item.url);
+
+    if (activeUrls.length === 0) {
       return;
     }
 
-    downloadTextFile(activeResults.map((item) => item.url).join("\n"), "active-m3u-links.txt");
+    if (format === "json") {
+      downloadJsonFile(activeResults, "active-m3u-links.json");
+    } else if (format === "m3u" || format === "m3u8") {
+      downloadTextFile(buildPlaylistExport(activeUrls), `active-links.${format}`);
+    } else if (format === "report") {
+      downloadTextFile(
+        [
+          "CHECKER IPTV REPORT",
+          `Generated: ${new Date().toISOString()}`,
+          `Active: ${activeCount}`,
+          `Dead: ${deadCount}`,
+          `Total: ${results.length}`,
+          "",
+          ...activeResults.map((item) => `${item.url} | ${item.message}`)
+        ].join("\n"),
+        "active-links-report.txt"
+      );
+    } else {
+      downloadTextFile(activeUrls.join("\n"), "active-m3u-links.txt");
+    }
+
+    void persistExportEvent(format, activeUrls);
   };
 
   const copyAllActive = () => {
@@ -187,73 +266,88 @@ export function CheckerPage({ lang }: CheckerPageProps) {
     setCurrentUrl("");
 
     let activeHits = 0;
+    let deadHits = 0;
+    const collectedResults: CheckResult[] = [];
+    const concurrency = Math.min(4, links.length);
 
     try {
-      for (const [index, url] of links.entries()) {
-        if (controller.signal.aborted) {
-          break;
-        }
+      let nextIndex = 0;
 
-        setCurrentUrl(url);
-        appendRuntimeLog(
-          createLog(
-            "info",
-            `${formatMessage(t.logChecking, { index: index + 1, count: links.length })}: ${url}`
-          )
-        );
+      const worker = async () => {
+        while (!controller.signal.aborted) {
+          const index = nextIndex;
+          nextIndex += 1;
 
-        let result: CheckResult;
-
-        try {
-          const response = await fetch("/api/check", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ url }),
-            signal: controller.signal
-          });
-
-          result = (await response.json()) as CheckResult;
-        } catch (error) {
-          if (controller.signal.aborted) {
-            break;
+          if (index >= links.length) {
+            return;
           }
 
-          result = {
-            url,
-            status: "error",
-            verdict: "dead",
-            checkerStatus: "error",
-            httpCode: null,
-            timeMs: null,
-            message: error instanceof Error ? error.message : "Unexpected request failure.",
-            xtreamApiUrl: null,
-            account: null,
-            stream: {
-              status: "not_tested",
-              streamUrl: null,
-              streamName: null,
-              httpCode: null,
-              contentType: null,
-              responseMs: null,
-              previewUrl: null,
-              message: "Advanced validation was not completed."
+          const url = links[index];
+          setCurrentUrl(url);
+          appendRuntimeLog(
+            createLog(
+              "info",
+              `${formatMessage(t.logChecking, { index: index + 1, count: links.length })}: ${url}`
+            )
+          );
+
+          let result: CheckResult;
+
+          try {
+            const response = await fetch(buildApiUrl("/api/check"), {
+              method: "POST",
+              headers: buildSessionHeaders({
+                "Content-Type": "application/json"
+              }),
+              body: JSON.stringify({ url }),
+              signal: controller.signal
+            });
+
+            result = (await response.json()) as CheckResult;
+          } catch (error) {
+            if (controller.signal.aborted) {
+              return;
             }
-          };
+
+            result = {
+              url,
+              status: "error",
+              verdict: "dead",
+              checkerStatus: "error",
+              httpCode: null,
+              timeMs: null,
+              message: error instanceof Error ? error.message : "Unexpected request failure.",
+              xtreamApiUrl: null,
+              account: null,
+              stream: {
+                status: "not_tested",
+                streamUrl: null,
+                streamName: null,
+                httpCode: null,
+                contentType: null,
+                responseMs: null,
+                previewUrl: null,
+                message: "Advanced validation was not completed."
+              }
+            };
+          }
+
+          collectedResults.push(result);
+          setResults((current) => [...current, result]);
+
+          if (result.verdict === "active") {
+            activeHits += 1;
+            appendRuntimeLog(createLog("success", `${t.logActive}: ${result.url} (${result.message})`));
+          } else {
+            deadHits += 1;
+            appendRuntimeLog(createLog("error", `${t.logDead}: ${result.url} (${result.checkerStatus})`));
+          }
+
+          await new Promise((resolve) => window.setTimeout(resolve, 90));
         }
+      };
 
-        setResults((current) => [...current, result]);
-
-        if (result.verdict === "active") {
-          activeHits += 1;
-          appendRuntimeLog(createLog("success", `${t.logActive}: ${result.url} (${result.message})`));
-        } else {
-          appendRuntimeLog(createLog("error", `${t.logDead}: ${result.url} (${result.checkerStatus})`));
-        }
-
-        await new Promise((resolve) => window.setTimeout(resolve, 220));
-      }
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
     } finally {
       setCurrentUrl("");
       setIsChecking(false);
@@ -261,6 +355,12 @@ export function CheckerPage({ lang }: CheckerPageProps) {
 
       if (!controller.signal.aborted) {
         appendRuntimeLog(createLog("success", formatMessage(t.logFinished, { active: activeHits })));
+        void persistScanSummary({
+          inputCount: links.length,
+          activeCount: activeHits,
+          deadCount: deadHits,
+          results: collectedResults.slice(0, 100)
+        });
       }
     }
   };
@@ -315,7 +415,12 @@ export function CheckerPage({ lang }: CheckerPageProps) {
   };
 
   return (
-    <div className="grid gap-6">
+    <motion.div
+      className="grid gap-6"
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+    >
       <header className="relative overflow-hidden border border-white/10 bg-white/[0.035] p-6 shadow-glow backdrop-blur-xl md:p-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(76,242,255,0.18),transparent_48%),linear-gradient(135deg,rgba(10,16,31,0.95),rgba(8,14,27,0.72))]" />
         <div className="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
@@ -530,7 +635,7 @@ export function CheckerPage({ lang }: CheckerPageProps) {
               <p className="mt-3 max-w-xl leading-7 text-slate-300">{t.exportSummary}</p>
             </div>
 
-            <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <button
                 type="button"
                 onClick={copyAllActive}
@@ -543,17 +648,121 @@ export function CheckerPage({ lang }: CheckerPageProps) {
 
               <button
                 type="button"
-                onClick={exportActiveLinks}
+                onClick={() => exportActiveLinks("txt")}
                 disabled={activeCount === 0}
                 className="rounded-[22px] border border-neon-cyan/40 bg-neon-cyan/10 px-5 py-4 text-left transition hover:bg-neon-cyan/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <p className="font-mono text-xs uppercase tracking-[0.24em] text-neon-cyan">{t.exportTxt}</p>
                 <p className="mt-2 text-sm text-slate-200">active-m3u-links.txt</p>
               </button>
+
+              <button
+                type="button"
+                onClick={() => exportActiveLinks("m3u")}
+                disabled={activeCount === 0}
+                className="rounded-[22px] border border-white/10 bg-white/[0.05] px-5 py-4 text-left transition hover:border-neon-cyan/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-200">Export M3U</p>
+                <p className="mt-2 text-sm text-slate-400">active-links.m3u</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportActiveLinks("m3u8")}
+                disabled={activeCount === 0}
+                className="rounded-[22px] border border-white/10 bg-white/[0.05] px-5 py-4 text-left transition hover:border-neon-green/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-200">Export M3U8</p>
+                <p className="mt-2 text-sm text-slate-400">active-links.m3u8</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportActiveLinks("json")}
+                disabled={activeCount === 0}
+                className="rounded-[22px] border border-white/10 bg-white/[0.05] px-5 py-4 text-left transition hover:border-neon-cyan/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-200">Export JSON</p>
+                <p className="mt-2 text-sm text-slate-400">active-m3u-links.json</p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => exportActiveLinks("report")}
+                disabled={activeCount === 0}
+                className="rounded-[22px] border border-white/10 bg-white/[0.05] px-5 py-4 text-left transition hover:border-neon-cyan/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <p className="font-mono text-xs uppercase tracking-[0.24em] text-slate-200">Export Report</p>
+                <p className="mt-2 text-sm text-slate-400">active-links-report.txt</p>
+              </button>
             </div>
           </div>
         </GlassPanel>
       </div>
-    </div>
+
+      <section className="glass-panel rounded-xl p-6 md:p-8">
+        <div className="max-w-5xl space-y-6 text-slate-200">
+          <div>
+            <h2 className="font-display text-3xl text-white">Free IPTV Link Checker - Frequently Asked Questions</h2>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-display text-xl text-white">How to Use the Free Online IPTV Checker?</h3>
+            <p>Our free online IPTV link checker is the best tool to verify M3U playlists and Xtream Codes URLs. Follow these steps to test your IPTV streams:</p>
+            <ol className="list-decimal space-y-2 pl-5">
+              <li>Paste your IPTV links (M3U or Xtream Codes) into the text area above.</li>
+              <li>Click the "SCAN ALL" button to start the real-time testing process.</li>
+              <li>The tool will automatically check if each link is online, unauthorized, or invalid.</li>
+              <li>Use the filter chips to view only active links and export your valid playlist.</li>
+            </ol>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-display text-xl text-white">What is an M3U Playlist & Xtream Codes?</h3>
+            <p>M3U is a computer file format for a multimedia playlist. One common use of the M3U file format is creating a single-entry playlist file that points to a stream on the Internet. Xtream Codes is a popular IPTV management system that uses an API to deliver streams to users.</p>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-display text-xl text-white">Why Use Our IPTV Stream Tester?</h3>
+            <p>Using an IPTV link validator ensures that your playlist is always fresh and functional. Our tool is optimized for speed and accuracy, checking hundreds of links in seconds. It detects common errors like "Unauthorized" (bad credentials) and "Unreachable" (offline servers), saving you time and frustration.</p>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-display text-xl text-white">Understanding IPTV Checker Results</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <p className="font-mono text-xs uppercase tracking-[0.18em] text-neon-green">Active:</p>
+                <p className="mt-2 text-sm text-slate-300">The IPTV stream is online and working perfectly.</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <p className="font-mono text-xs uppercase tracking-[0.18em] text-neon-red">Unauthorized:</p>
+                <p className="mt-2 text-sm text-slate-300">The username or password for the IPTV account has expired or is incorrect.</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <p className="font-mono text-xs uppercase tracking-[0.18em] text-neon-amber">Unreachable:</p>
+                <p className="mt-2 text-sm text-slate-300">The server is currently offline or unreachable from our location.</p>
+              </div>
+              <div className="rounded-lg border border-white/10 bg-black/20 p-4">
+                <p className="font-mono text-xs uppercase tracking-[0.18em] text-neon-cyan">Invalid:</p>
+                <p className="mt-2 text-sm text-slate-300">The link format is incorrect or doesn't point to a valid IPTV playlist.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-display text-xl text-white">Disclaimer</h3>
+            <p>This free IPTV tool is for educational and diagnostic purposes only. We do not host, provide, or sell any IPTV content or subscriptions. It is the user's responsibility to ensure they have the legal right to use any IPTV links they check with this utility.</p>
+          </div>
+
+          <div className="flex flex-wrap gap-3 font-mono text-xs uppercase tracking-[0.22em] text-slate-400">
+            <span>PRIVACY POLICY</span>
+            <span>TERMS OF SERVICE</span>
+            <span>CONTACT US</span>
+          </div>
+
+          <p className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500">© 2026 IPTV LINK CHECKER. ALL RIGHTS RESERVED.</p>
+        </div>
+      </section>
+    </motion.div>
   );
 }

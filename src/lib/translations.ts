@@ -6,19 +6,19 @@ export const translations = {
     otherLocale: "AR",
     navChecker: "Checker",
     navPlayer: "Player",
-    heroTag: "Premium IPTV frontend proxy",
-    heroTitle: "M3U Active Checker",
+    heroTag: "Railway-backed IPTV platform",
+    heroTitle: "CHECKER IPTV",
     heroBody:
-      "Drop a messy TXT file, auto-clean real M3U URLs, and send each link through iptvchecker.site with a polished futuristic workflow.",
+      "Import playlists, validate Xtream and M3U accounts, and play live IPTV streams inside a premium browser workspace backed by a dedicated proxy layer.",
     heroChipOne: "Glassmorphism UI",
-    heroChipTwo: "Sequential remote checks",
+    heroChipTwo: "Parallel scan queue",
     heroChipThree: "Active-only export",
-    backendReady: "Remote checker proxy online",
-    backendDown: "Proxy unavailable",
+    backendReady: "Backend proxy online",
+    backendDown: "Backend proxy unavailable",
     uploadTitle: "Upload & Extract",
     uploadEyebrow: "TXT Intake",
     uploadHint: "Drag & drop your TXT file here, or paste raw text below.",
-    uploadSubhint: "Only `/get.php?username=` links with `type=m3u` survive cleanup.",
+    uploadSubhint: "M3U `get.php` links and Xtream `player_api.php` URLs are extracted and checked.",
     chooseFile: "Choose TXT",
     cleanAndCheck: "Clean & Check",
     inputPlaceholder:
@@ -61,7 +61,7 @@ export const translations = {
     pasteRun: "Manual text queued for cleanup and checking.",
     logPrepared: "Prepared {count} clean links for remote checking.",
     logSkipped: "Skipped {count} duplicate or invalid candidates during cleanup.",
-    logRemote: "Forwarding links one by one to iptvchecker.site.",
+    logRemote: "Forwarding links through the parallel proxy checker queue.",
     logChecking: "Checking {index}/{count}",
     logActive: "ACTIVE confirmed",
     logDead: "DEAD result",
@@ -98,7 +98,7 @@ export const translations = {
     statusCode: "HTTP",
     exportSummary: "Ready to copy or download all verified active M3U links.",
     footer:
-      "This app is a frontend layer around the remote iptvchecker.site checker flow. No database. No auth. Just cleanup, proxying, and results."
+      "Vercel frontend, Railway proxy backend, optional Neon persistence, live checker workflow, and in-browser IPTV playback."
   },
   ar: {
     locale: "AR",

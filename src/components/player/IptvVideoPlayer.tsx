@@ -26,6 +26,7 @@ import {
   useState
 } from "react";
 import type { PointerEvent } from "react";
+import { buildApiUrl, buildProxyProbeUrl, buildProxyUrl } from "../../lib/api";
 
 export interface IptvVideoPlayerHandle {
   reload: () => void;
@@ -240,27 +241,13 @@ function engineFromContentType(contentType: string | undefined): PlaybackEngine 
 
 function buildAttemptUrl(sourceUrl: string, attempt: number) {
   const providerUrl = extractProviderUrl(sourceUrl);
-  const url = new URL("/proxy", window.location.origin);
-  url.searchParams.set("url", providerUrl);
-
-  if (attempt > 0) {
-    url.searchParams.set("retry", String(Math.min(3, attempt)));
-  }
-
-  return url.toString();
+  return buildProxyUrl(providerUrl, attempt);
 }
 
 function buildProbeUrl(playbackUrl: string) {
   const parsed = new URL(playbackUrl, window.location.origin);
-  const probe = new URL("/proxy/probe", window.location.origin);
-  probe.searchParams.set("url", extractProviderUrl(playbackUrl));
-
   const retry = parsed.searchParams.get("retry");
-  if (retry) {
-    probe.searchParams.set("retry", retry);
-  }
-
-  return probe.toString();
+  return buildProxyProbeUrl(extractProviderUrl(playbackUrl), retry ? Number(retry) : 0);
 }
 
 function isMissingProxyRouteError(message: string) {
@@ -1245,11 +1232,9 @@ export const IptvVideoPlayer = forwardRef<IptvVideoPlayerHandle, IptvVideoPlayer
 
         player.getNetworkingEngine()?.registerRequestFilter((_type, request) => {
           request.uris = request.uris.map((uri) => {
-            if (/^\/proxy\?url=/.test(uri)) return new URL(uri, window.location.origin).toString();
+            if (/^\/proxy\?url=/.test(uri)) return buildApiUrl(uri);
             if (/^https?:\/\//i.test(uri)) {
-              const proxyUrl = new URL("/proxy", window.location.origin);
-              proxyUrl.searchParams.set("url", uri);
-              return proxyUrl.toString();
+              return buildProxyUrl(uri);
             }
             return uri;
           });

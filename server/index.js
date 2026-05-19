@@ -1,13 +1,29 @@
 import crypto from "node:crypto";
+import compression from "compression";
 import cors from "cors";
 import express from "express";
-
-
+import rateLimit from "express-rate-limit";
 import fs from "node:fs";
+import helmet from "helmet";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { ProxyAgent } from "undici";
+import { initializeDatabase, isDatabaseEnabled } from "./db.js";
+import {
+  deletePlaylistFromDatabase,
+  getSessionId,
+  loadFavoritesFromDatabase,
+  loadHistoryFromDatabase,
+  loadPlaylistsFromDatabase,
+  recordCheckerReport,
+  recordExportedFile,
+  recordScanHistory,
+  saveFavoritesToDatabase,
+  saveHistoryEntryToDatabase,
+  savePlaylistToDatabase,
+  upsertStreamDiagnostics
+} from "./persistence.js";
 import { markProxyFailure, markProxySuccess, selectProxyForRequest } from "./proxy/proxyManager.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,22 +39,49 @@ const historyCacheDir = path.join(cacheRoot, "history");
 const historyCacheFile = path.join(historyCacheDir, "recent.json");
 const checkerEndpoint = process.env.IPTV_CHECKER_ENDPOINT || "https://iptvchecker.site/";
 const port = Number(process.env.PORT || 4000);
+const allowedOrigins = String(process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 for (const dir of [cacheRoot, playlistCacheDir, logoCacheDir, historyCacheDir]) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
 const app = express();
-
-
-
+app.set("trust proxy", 1);
 
 app.use(
   cors({
-    origin: true
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin not allowed by CORS policy"));
+    }
   })
 );
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: false
+  })
+);
+app.use(compression());
+const apiRateLimit = rateLimit({
+  windowMs: 60_000,
+  max: Number(process.env.RATE_LIMIT_MAX || 240),
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use("/api", apiRateLimit);
+app.use("/proxy/probe", apiRateLimit);
 app.use(express.json({ limit: "25mb" }));
+
+void initializeDatabase().catch((error) => {
+  console.warn("[db] initialization failed", error instanceof Error ? error.message : error);
+});
 
 const supportedPath = /\/get\.php$/i;
 const PLAYER_STATUS = {
@@ -257,12 +300,13 @@ function isSupportedM3uUrl(candidate) {
     const parsed = new URL(cleaned);
     const type = (parsed.searchParams.get("type") || "").toLowerCase();
     const username = parsed.searchParams.get("username");
+    const password = parsed.searchParams.get("password");
 
     return (
       /^https?:$/i.test(parsed.protocol) &&
-      supportedPath.test(parsed.pathname) &&
       Boolean(username) &&
-      type.includes("m3u")
+      ((supportedPath.test(parsed.pathname) && type.includes("m3u")) ||
+        (/\/player_api\.php$/i.test(parsed.pathname) && Boolean(password)))
     );
   } catch {
     return false;
@@ -432,6 +476,25 @@ function buildXtreamApiUrl(m3uUrl) {
   api.searchParams.set("username", credentials.username);
   api.searchParams.set("password", credentials.password);
   return api.toString();
+}
+
+function buildXtreamPlaylistUrl(value) {
+  try {
+    const parsed = new URL(value);
+
+    if (!/\/player_api\.php$/i.test(parsed.pathname)) {
+      return value;
+    }
+
+    const playlistUrl = new URL("/get.php", parsed.origin);
+    playlistUrl.searchParams.set("username", parsed.searchParams.get("username") || "");
+    playlistUrl.searchParams.set("password", parsed.searchParams.get("password") || "");
+    playlistUrl.searchParams.set("type", parsed.searchParams.get("type") || "m3u_plus");
+    playlistUrl.searchParams.set("output", parsed.searchParams.get("output") || "m3u8");
+    return playlistUrl.toString();
+  } catch {
+    return value;
+  }
 }
 
 function buildXtreamActionUrl(apiUrl, action) {
@@ -872,16 +935,28 @@ function writeRecentHistory(entries) {
   writeJsonFile(historyCacheFile, entries.slice(0, 60));
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({
+function buildHealthPayload() {
+  return {
     ok: true,
     checkerEndpoint,
-    cacheRoot
-  });
+    cacheRoot,
+    databaseEnabled: isDatabaseEnabled(),
+    railwayReady: !isVercelRuntime,
+    timestamp: new Date().toISOString()
+  };
+}
+
+app.get("/health", (_req, res) => {
+  res.json(buildHealthPayload());
+});
+
+app.get("/api/health", (_req, res) => {
+  res.json(buildHealthPayload());
 });
 
 app.post("/api/check", async (req, res) => {
   const url = typeof req.body?.url === "string" ? normalizeCandidateUrl(req.body.url) : "";
+  const sessionId = getSessionId(req);
 
   if (!url || !isSupportedM3uUrl(url)) {
     return res.status(400).json(buildInvalidResponse(url));
@@ -903,7 +978,16 @@ app.post("/api/check", async (req, res) => {
     });
 
     const payload = JSON.parse(await response.text());
-    return res.json(await enrichAdvancedValidation(normalizeRemoteResult(payload, url), url, req));
+    const enrichedResult = await enrichAdvancedValidation(normalizeRemoteResult(payload, url), url, req);
+    void upsertStreamDiagnostics(enrichedResult.stream).catch(() => undefined);
+    void recordCheckerReport(sessionId, {
+      sourceName: url,
+      totalCount: 1,
+      activeCount: enrichedResult.verdict === "active" ? 1 : 0,
+      deadCount: enrichedResult.verdict === "dead" ? 1 : 0,
+      result: enrichedResult
+    }).catch(() => undefined);
+    return res.json(enrichedResult);
   } catch (error) {
     const baseResult = {
       url,
@@ -919,7 +1003,16 @@ app.post("/api/check", async (req, res) => {
     };
 
     try {
-      return res.status(502).json(await enrichAdvancedValidation(baseResult, url, req));
+      const enrichedResult = await enrichAdvancedValidation(baseResult, url, req);
+      void upsertStreamDiagnostics(enrichedResult.stream).catch(() => undefined);
+      void recordCheckerReport(sessionId, {
+        sourceName: url,
+        totalCount: 1,
+        activeCount: 0,
+        deadCount: 1,
+        result: enrichedResult
+      }).catch(() => undefined);
+      return res.status(502).json(enrichedResult);
     } catch {
       return res.status(502).json(baseResult);
     }
@@ -928,17 +1021,22 @@ app.post("/api/check", async (req, res) => {
 
 app.post("/api/player/fetch-url", async (req, res) => {
   const url = typeof req.body?.url === "string" ? normalizeCandidateUrl(req.body.url) : "";
+  const normalizedPlaylistUrl = buildXtreamPlaylistUrl(url);
 
-  if (!url) {
+  if (!normalizedPlaylistUrl) {
     return res.status(400).json({ error: "Playlist URL is required." });
   }
 
   try {
-    const text = await fetchText(url, 25000, "audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain,*/*");
+    const text = await fetchText(
+      normalizedPlaylistUrl,
+      25000,
+      "audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain,*/*"
+    );
     return res.json({
-      url,
+      url: normalizedPlaylistUrl,
       text,
-      suggestedName: safeFileName(new URL(url).hostname || "remote-playlist")
+      suggestedName: safeFileName(new URL(normalizedPlaylistUrl).hostname || "remote-playlist")
     });
   } catch (error) {
     return res.status(502).json({
@@ -947,14 +1045,18 @@ app.post("/api/player/fetch-url", async (req, res) => {
   }
 });
 
-app.get("/api/player/cache/playlists", (_req, res) => {
+app.get("/api/player/cache/playlists", async (req, res) => {
+  const sessionId = getSessionId(req);
+  const databasePlaylists = await loadPlaylistsFromDatabase(sessionId).catch(() => null);
+
   res.json({
-    playlists: listCachedPlaylists()
+    playlists: databasePlaylists || listCachedPlaylists()
   });
 });
 
-app.post("/api/player/cache/playlist", (req, res) => {
+app.post("/api/player/cache/playlist", async (req, res) => {
   const playlist = req.body?.playlist;
+  const sessionId = getSessionId(req);
 
   if (!playlist || typeof playlist !== "object" || !playlist.id) {
     return res.status(400).json({ error: "Playlist payload is required." });
@@ -966,27 +1068,34 @@ app.post("/api/player/cache/playlist", (req, res) => {
   };
 
   writeJsonFile(getPlaylistCachePath(payload.id), payload);
+  await savePlaylistToDatabase(sessionId, payload).catch(() => null);
   return res.json({ ok: true, id: payload.id });
 });
 
-app.delete("/api/player/cache/playlist/:id", (req, res) => {
+app.delete("/api/player/cache/playlist/:id", async (req, res) => {
+  const sessionId = getSessionId(req);
   const targetPath = getPlaylistCachePath(req.params.id);
 
   if (fs.existsSync(targetPath)) {
     fs.unlinkSync(targetPath);
   }
 
+  await deletePlaylistFromDatabase(sessionId, req.params.id).catch(() => null);
   return res.json({ ok: true });
 });
 
-app.get("/api/player/cache/history", (_req, res) => {
+app.get("/api/player/cache/history", async (req, res) => {
+  const sessionId = getSessionId(req);
+  const databaseHistory = await loadHistoryFromDatabase(sessionId).catch(() => null);
+
   res.json({
-    history: readRecentHistory()
+    history: databaseHistory || readRecentHistory()
   });
 });
 
-app.post("/api/player/cache/history", (req, res) => {
+app.post("/api/player/cache/history", async (req, res) => {
   const entry = req.body?.entry;
+  const sessionId = getSessionId(req);
 
   if (!entry || typeof entry !== "object") {
     return res.status(400).json({ error: "History entry is required." });
@@ -1001,7 +1110,41 @@ app.post("/api/player/cache/history", (req, res) => {
     playedAt: new Date().toISOString()
   });
   writeRecentHistory(current);
+  await saveHistoryEntryToDatabase(sessionId, current[0]).catch(() => null);
 
+  return res.json({ ok: true });
+});
+
+app.get("/api/player/cache/favorites", async (req, res) => {
+  const sessionId = getSessionId(req);
+  const favorites = await loadFavoritesFromDatabase(sessionId).catch(() => null);
+
+  return res.json({
+    favorites: favorites || []
+  });
+});
+
+app.post("/api/player/cache/favorites", async (req, res) => {
+  const favorites = Array.isArray(req.body?.favorites) ? req.body.favorites : null;
+
+  if (!favorites) {
+    return res.status(400).json({ error: "Favorites array is required." });
+  }
+
+  const sessionId = getSessionId(req);
+  await saveFavoritesToDatabase(sessionId, favorites).catch(() => null);
+  return res.json({ ok: true });
+});
+
+app.post("/api/checker/scan-history", async (req, res) => {
+  const sessionId = getSessionId(req);
+  await recordScanHistory(sessionId, req.body || {}).catch(() => null);
+  return res.json({ ok: true });
+});
+
+app.post("/api/checker/export", async (req, res) => {
+  const sessionId = getSessionId(req);
+  await recordExportedFile(sessionId, req.body || {}).catch(() => null);
   return res.json({ ok: true });
 });
 
@@ -1105,9 +1248,23 @@ function buildUpstreamAcceptHeader(targetUrl) {
 }
 
 function buildUpstreamHeaders(req, targetUrl, extra = {}) {
+  let targetOrigin = "";
+
+  try {
+    targetOrigin = new URL(targetUrl).origin;
+  } catch {
+    targetOrigin = "";
+  }
+
   const headers = {
     ...IPTV_REQUEST_HEADERS,
     Accept: buildUpstreamAcceptHeader(targetUrl),
+    "Accept-Language": "en-US,en;q=0.9",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Keep-Alive": "timeout=30, max=1000",
+    Referer: targetOrigin || undefined,
+    Origin: targetOrigin || undefined,
     ...extra
   };
 
@@ -1498,6 +1655,41 @@ app.get("/proxy", async (req, res) => {
     return await proxyStreamToResponse(req, res, targetUrl);
   } catch (error) {
     return res.status(502).send(error instanceof Error ? error.message : "Stream proxy failed.");
+  }
+});
+
+app.get("/stream", async (req, res) => {
+  const targetUrl = typeof req.query?.url === "string" ? req.query.url : "";
+  if (!targetUrl) {
+    return res.status(400).json({ error: "url is required" });
+  }
+
+  try {
+    return await proxyStreamToResponse(req, res, targetUrl);
+  } catch (error) {
+    return res.status(502).send(error instanceof Error ? error.message : "Stream proxy failed.");
+  }
+});
+
+app.get("/m3u", async (req, res) => {
+  const targetUrl = typeof req.query?.url === "string" ? req.query.url : "";
+  const normalizedTarget = unwrapProxyTarget(targetUrl);
+
+  if (!normalizedTarget || !isHttpUrl(normalizedTarget)) {
+    return res.status(400).json({ error: "url is required" });
+  }
+
+  try {
+    const text = await fetchText(
+      normalizedTarget,
+      25_000,
+      "audio/x-mpegurl,application/vnd.apple.mpegurl,text/plain,*/*"
+    );
+    return res.type("application/vnd.apple.mpegurl").send(text);
+  } catch (error) {
+    return res.status(502).json({
+      error: error instanceof Error ? error.message : "Playlist fetch failed."
+    });
   }
 });
 

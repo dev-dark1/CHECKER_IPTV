@@ -1,11 +1,13 @@
+import { buildApiUrl, buildProxyUrl } from "./api";
+import { buildSessionHeaders } from "./session";
 import type { CachedPlaylist, RecentChannel } from "../player/types";
 
 export async function fetchRemotePlaylistText(url: string) {
-  const response = await fetch("/api/player/fetch-url", {
+  const response = await fetch(buildApiUrl("/api/player/fetch-url"), {
     method: "POST",
-    headers: {
+    headers: buildSessionHeaders({
       "Content-Type": "application/json"
-    },
+    }),
     body: JSON.stringify({ url })
   });
 
@@ -17,45 +19,68 @@ export async function fetchRemotePlaylistText(url: string) {
 }
 
 export async function savePlaylistToServerCache(playlist: CachedPlaylist) {
-  await fetch("/api/player/cache/playlist", {
+  await fetch(buildApiUrl("/api/player/cache/playlist"), {
     method: "POST",
-    headers: {
+    headers: buildSessionHeaders({
       "Content-Type": "application/json"
-    },
+    }),
     body: JSON.stringify({ playlist })
   });
 }
 
 export async function fetchServerCachedPlaylists() {
-  const response = await fetch("/api/player/cache/playlists");
+  const response = await fetch(buildApiUrl("/api/player/cache/playlists"), {
+    headers: buildSessionHeaders()
+  });
   const payload = (await response.json()) as { playlists: CachedPlaylist[] };
   return payload.playlists || [];
 }
 
 export async function deletePlaylistFromServerCache(id: string) {
-  await fetch(`/api/player/cache/playlist/${encodeURIComponent(id)}`, {
-    method: "DELETE"
+  await fetch(buildApiUrl(`/api/player/cache/playlist/${encodeURIComponent(id)}`), {
+    method: "DELETE",
+    headers: buildSessionHeaders()
   });
 }
 
 export async function saveHistoryToServer(entry: RecentChannel) {
-  await fetch("/api/player/cache/history", {
+  await fetch(buildApiUrl("/api/player/cache/history"), {
     method: "POST",
-    headers: {
+    headers: buildSessionHeaders({
       "Content-Type": "application/json"
-    },
+    }),
     body: JSON.stringify({ entry })
   });
 }
 
 export async function fetchServerHistory() {
-  const response = await fetch("/api/player/cache/history");
+  const response = await fetch(buildApiUrl("/api/player/cache/history"), {
+    headers: buildSessionHeaders()
+  });
   const payload = (await response.json()) as { history: RecentChannel[] };
   return payload.history || [];
 }
 
+export async function fetchServerFavorites() {
+  const response = await fetch(buildApiUrl("/api/player/cache/favorites"), {
+    headers: buildSessionHeaders()
+  });
+  const payload = (await response.json()) as { favorites: string[] };
+  return payload.favorites || [];
+}
+
+export async function saveFavoritesToServer(favorites: string[]) {
+  await fetch(buildApiUrl("/api/player/cache/favorites"), {
+    method: "POST",
+    headers: buildSessionHeaders({
+      "Content-Type": "application/json"
+    }),
+    body: JSON.stringify({ favorites })
+  });
+}
+
 export function getCachedLogoUrl(sourceUrl: string | null) {
-  return sourceUrl ? `/api/player/cache/logo?url=${encodeURIComponent(sourceUrl)}` : "";
+  return sourceUrl ? buildApiUrl(`/api/player/cache/logo?url=${encodeURIComponent(sourceUrl)}`) : "";
 }
 
 export function getPlayableStreamUrl(sourceUrl: string | null) {
@@ -72,11 +97,11 @@ export function getPlayableStreamUrl(sourceUrl: string | null) {
         parsed.pathname === "/api/player/stream" ||
         parsed.pathname === "/api/hls-proxy")
     ) {
-      return `/proxy?url=${encodeURIComponent(nestedUrl)}`;
+      return buildProxyUrl(nestedUrl);
     }
   } catch {
     // fall through to encode the raw provider URL once
   }
 
-  return `/proxy?url=${encodeURIComponent(cleaned)}`;
+  return buildProxyUrl(cleaned);
 }

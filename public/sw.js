@@ -1,4 +1,4 @@
-const CACHE_NAME = "checker-iptv-shell-v1";
+const CACHE_NAME = "checker-iptv-shell-v2";
 const APP_SHELL = ["/", "/player", "/offline.html", "/manifest.webmanifest", "/pwa-icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -23,7 +23,13 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
 
-  if (url.pathname.startsWith("/proxy") || url.pathname.startsWith("/api")) {
+  if (
+    url.pathname.startsWith("/proxy") ||
+    url.pathname.startsWith("/api") ||
+    url.pathname.startsWith("/stream") ||
+    url.pathname.startsWith("/m3u") ||
+    url.pathname.startsWith("/health")
+  ) {
     return;
   }
 
